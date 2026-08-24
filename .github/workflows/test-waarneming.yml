@@ -1,0 +1,31 @@
+name: Test Waarneming API
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test verbinding met Waarneming.nl
+        run: |
+          URL="https://waarneming.nl/api/v1/species/25/observations/?ordering=-date&limit=5"
+
+          CODE=$(curl -L -sS \
+            -A "Mozilla/5.0" \
+            -o response.txt \
+            -w "%{http_code}" \
+            "$URL")
+
+          echo "HTTP-status: $CODE"
+
+          if [ "$CODE" = "200" ] && jq -e . response.txt >/dev/null 2>&1; then
+            echo "✅ SUCCES: Waarneming.nl geeft geldige JSON terug"
+            jq '{count: .count, aantal_resultaten: (.results | length)}' response.txt
+          else
+            echo "❌ MISLUKT: geen geldige API-respons"
+            echo "Eerste stukje van het antwoord:"
+            head -c 500 response.txt
+            exit 1
+          fi
