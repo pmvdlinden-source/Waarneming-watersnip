@@ -1,0 +1,21 @@
+{
+  "soort": "Watersnip",
+  "datum": "2026-08-24",
+  "centrum": "Leusden",
+  "straal_km": 15,
+  "aantal_waarnemingen": 1,
+  "waarnemingen": [
+    {
+      "id": 418056807,
+      "datum": "2026-08-24",
+      "tijd": "11:45",
+      "aantal": 1,
+      "afstand_km": 11.83,
+      "locatie": "Baarn - Eemerwaard",
+      "latitude": 52.20827102661133,
+      "longitude": 5.310196876525879,
+      "validatiestatus": "O",
+      "link": "https://waarneming.nl/observation/418056807/"
+    }
+  ]
+}
