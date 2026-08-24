@@ -1,0 +1,184 @@
+name: Zoek Watersnip rond Leusden
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  zoek:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Open repository
+        uses: actions/checkout@v4
+
+      - name: Zoek Watersnippen
+        run: |
+          python - <<'PY'
+          import json
+          import math
+          import urllib.request
+          import datetime
+          from zoneinfo import ZoneInfo
+
+          # Centrum Leusden
+          CENTER_LAT = 52.1325
+          CENTER_LON = 5.431944
+
+          # Zoekstraal
+          RADIUS_KM = 15
+
+          # Watersnip op Waarneming.nl
+          SPECIES_ID = 25
+
+          today = datetime.datetime.now(
+              ZoneInfo("Europe/Amsterdam")
+          ).date().isoformat()
+
+          def distance_km(lat1, lon1, lat2, lon2):
+              r = 6371.0
+              p1 = math.radians(lat1)
+              p2 = math.radians(lat2)
+              dp = math.radians(lat2 - lat1)
+              dl = math.radians(lon2 - lon1)
+
+              a = (
+                  math.sin(dp / 2) ** 2
+                  + math.cos(p1)
+                  * math.cos(p2)
+                  * math.sin(dl / 2) ** 2
+              )
+
+              return 2 * r * math.asin(math.sqrt(a))
+
+          found_today = []
+          offset = 0
+
+          while True:
+              url = (
+                  f"https://waarneming.nl/api/v1/species/"
+                  f"{SPECIES_ID}/observations/"
+                  f"?ordering=-date&limit=1000&offset={offset}"
+              )
+
+              req = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "Mozilla/5.0"}
+              )
+
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  data = json.load(response)
+
+              results = data.get("results", [])
+
+              if not results:
+                  break
+
+              for obs in results:
+                  if obs.get("date") == today:
+                      found_today.append(obs)
+
+              dates = [
+                  obs.get("date")
+                  for obs in results
+                  if obs.get("date")
+              ]
+
+              # Omdat nieuwste waarnemingen eerst staan:
+              # stoppen zodra we gisteren of ouder bereiken.
+              if any(d < today for d in dates):
+                  break
+
+              offset += len(results)
+
+              if len(results) < 1000:
+                  break
+
+          nearby = []
+
+          for obs in found_today:
+              point = obs.get("point") or {}
+              coordinates = point.get("coordinates")
+
+              if not coordinates or len(coordinates) < 2:
+                  continue
+
+              lon = coordinates[0]
+              lat = coordinates[1]
+
+              distance = distance_km(
+                  CENTER_LAT,
+                  CENTER_LON,
+                  lat,
+                  lon
+              )
+
+              if distance <= RADIUS_KM:
+                  location_detail = obs.get("location_detail") or {}
+
+                  nearby.append({
+                      "id": obs.get("id"),
+                      "datum": obs.get("date"),
+                      "tijd": obs.get("time"),
+                      "aantal": obs.get("number"),
+                      "afstand_km": round(distance, 2),
+                      "locatie": location_detail.get("name"),
+                      "latitude": lat,
+                      "longitude": lon,
+                      "validatiestatus": obs.get("validation_status"),
+                      "link": obs.get("permalink")
+                  })
+
+          nearby.sort(
+              key=lambda x: x.get("tijd") or "",
+              reverse=True
+          )
+
+          output = {
+              "soort": "Watersnip",
+              "datum": today,
+              "centrum": "Leusden",
+              "straal_km": RADIUS_KM,
+              "aantal_waarnemingen": len(nearby),
+              "waarnemingen": nearby
+          }
+
+          with open("watersnip.json", "w", encoding="utf-8") as f:
+              json.dump(
+                  output,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          print()
+          print("================================")
+          print(f"Datum: {today}")
+          print(
+              f"Watersnip binnen {RADIUS_KM} km "
+              f"van Leusden: {len(nearby)}"
+          )
+          print("================================")
+
+          for obs in nearby:
+              print(
+                  obs["tijd"],
+                  "-",
+                  obs["aantal"],
+                  "ex. -",
+                  obs["afstand_km"],
+                  "km -",
+                  obs["link"]
+              )
+          PY
+
+      - name: Bewaar resultaat
+        run: |
+          git config user.name "Watersnip Bot"
+          git config user.email "actions@github.com"
+
+          git add watersnip.json
+          git commit -m "Update Watersnip waarnemingen" || exit 0
+          git push
